@@ -1,4 +1,4 @@
-# Containers from Scratch
+# 🐳 Containers from Scratch
 
 These are my personal research notes on attempting to replicate container functionality using generic Linux tools. The objective was to gain a comprehensive understanding of the underlying mechanisms and core functionality of containers.
 
