@@ -4,11 +4,13 @@ export IMAGE=alpine
 export CONTAINER_FS=$PWD/containers/$IMAGE/overlayfs
 export ROOTFS=$CONTAINER_FS/rootfs
 export CONTAINER_BLOBSUM=sha256:96526aa774ef0126ad0fe9e9a95764c5fc37f409ab9e97021e7b4775d82bf6fa # Alpine rootfs
+export NETWORK_NS=container
+export CGROUP=container
 
 # install host dependencies
 function get_dependencies(){
     apt update
-    apt install -y curl jq archivemount cgroup-tools bridge-utils
+    apt install -y curl jq archivemount cgroup-tools bridge-utils net-tools
 }
 
 # download container file system from Dockerhub
@@ -95,32 +97,32 @@ function network(){
     ip link set br0 up
     
     # assigns the IP address 172.31.0.1 to the br0 interface
-    ip a add dev br0 172.31.0.1/24
+    ip address add dev br0 172.31.0.1/24
+    
+    # create network namespace
+    ip netns add $NETWORK_NS
     
     # creates a pair of virtual Ethernet devices (veth0 and ceth0) that are linked together
-    ip l add veth0 type veth peer name ceth0
-    
-    # only when container is active
-    # creates a symbolic link to the network namespace of the container
-    ln -s /proc/$(lsns | grep unshare | grep ' net ' | awk '{print $4}')/ns/net /var/run/netns/container
+    ip link add veth0 type veth peer name ceth0
     
     # moves the ceth0 interface into the network namespace of the container
-    ip l set ceth0 netns container
+    ip link set ceth0 netns $NETWORK_NS
     
     # brings up the veth0 interface
-    ip l set veth0 up
-    
-    # brings up the ceth0 interface inside the container's network namespace
-    ip netns exec container ip l set ceth0 up
+    ip link set veth0 up
     
     # adds veth0 to the br0 bridge
     brctl addif br0 veth0
     
+    # brings up the ceth0 interface inside the container's network namespace
+    ip netns exec $NETWORK_NS ip link set dev ceth0 up
+    ip netns exec $NETWORK_NS ip link set dev lo up
+    
     # assigns the IP address 172.31.0.2 to the ceth0 interface inside the container
-    ip netns exec container ip a add dev ceth0 172.31.0.2/24
+    ip netns exec $NETWORK_NS ip address add dev ceth0 172.31.0.2/24
     
     # sets up the default route inside the container to use 172.31.0.1 as the gateway
-    ip netns exec container ip route add default via 172.31.0.1
+    ip netns exec $NETWORK_NS ip route add default via 172.31.0.1
     
     # flushes all the rules in the iptables filter table
     iptables -F
@@ -133,6 +135,44 @@ function network(){
     
     # verify NAT Rules
     iptables -t nat -L
+    
+    # list network interfaces in container namespace
+    ip netns exec $NETWORK_NS ip link list
+    
+    # list container routes
+    ip netns exec $NETWORK_NS route
+    
+    # list container iptable
+    ip netns exec $NETWORK_NS iptables -L
+}
+
+function start_container(){
+    # create network namespace
+    ip netns add $NETWORK_NS
+    
+    # configure DNS server
+    echo 'nameserver 1.1.1.1' | tee $ROOTFS/etc/resolv.conf
+    
+    # start sleeper container
+    cgexec -g cpu,memory,pids,cpuset:$CGROUP \
+    unshare \
+    --mount \
+    --uts \
+    --ipc \
+    --pid \
+    --fork \
+    --time \
+    --mount-proc=$ROOTFS/proc \
+    ip netns exec $NETWORK_NS \
+    chroot $ROOTFS /bin/sleep infinite &
+}
+
+function attach(){
+    PID=$(ps -ax | grep "/bin/sleep infinite" | awk '!/grep|unshare/ {print $1}')
+    
+    cgexec -g cpu,memory,pids,cpuset:$CGROUP \
+    nsenter -a -t $PID \
+    chroot $ROOTFS /bin/sh
 }
 
 # provisioning workflow
@@ -142,6 +182,8 @@ function up(){
     mount_fs
     mount_sys_fs
     cgroup
+    network
+    start_container
 }
 
 function down(){

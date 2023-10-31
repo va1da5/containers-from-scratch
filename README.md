@@ -306,6 +306,9 @@ sudo cgexec -g cpu,memory,pids,cpuset:container \
         --mount-proc=$ROOTFS/proc \
     chroot $ROOTFS /bin/sh
 
+export IMAGE=alpine
+export CONTAINER_FS=$PWD/containers/$IMAGE/overlayfs
+export ROOTFS=$CONTAINER_FS/rootfs
 sudo cgexec -g cpu,memory,pids,cpuset:container \
     unshare \
         --mount \
@@ -314,8 +317,28 @@ sudo cgexec -g cpu,memory,pids,cpuset:container \
         --pid \
         --fork \
         --time \
-        --net \
+        --net=/var/run/netns/container \
         --mount-proc=$ROOTFS/proc \
+    chroot $ROOTFS /bin/sh
+
+export IMAGE=alpine
+export CONTAINER_FS=$PWD/containers/$IMAGE/overlayfs
+export ROOTFS=$CONTAINER_FS/rootfs
+sudo cgexec -g cpu,memory,pids,cpuset:container \
+    unshare \
+        --mount \
+        --uts \
+        --ipc \
+        --pid \
+        --fork \
+        --time \
+        --mount-proc=$ROOTFS/proc \
+    ip netns exec container \
+    chroot $ROOTFS /bin/sh
+
+# attach to container by PID
+sudo cgexec -g cpu,memory,pids,cpuset:container \
+    nsenter -a -t $(ps -ax | grep "/bin/sleep infinite" | awk '!/grep|unshare/ {print $1}') \
     chroot $ROOTFS /bin/sh
 
 # make process to run out of memory
@@ -343,9 +366,11 @@ ip a add dev br0 172.31.0.1/24
 # creates a pair of virtual Ethernet devices (veth0 and ceth0) that are linked together
 ip l add veth0 type veth peer name ceth0
 
+ip netns add container
+
 # only when container is active
 # creates a symbolic link to the network namespace of the container
-ln -s /proc/$(lsns | grep unshare | grep ' net ' | awk '{print $4}')/ns/net /var/run/netns/container
+# ln -s /proc/$(lsns | grep unshare | grep ' net ' | awk '{print $4}')/ns/net /var/run/netns/container
 
 # moves the ceth0 interface into the network namespace of the container
 ip l set ceth0 netns container
@@ -397,3 +422,6 @@ iptables -t nat -L
 - [Overlay filesystem](https://wiki.archlinux.org/title/Overlay_filesystem)
 - [How to Use mknod Command in Linux](https://distroid.net/mknod-command-linux/)
 - [mknod Devices](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/Documentation/admin-guide/devices.txt)
+- [How Docker Works - Intro to Namespaces](https://www.youtube.com/watch?v=-YnMr1lj4Z8&ab_channel=LiveOverflow)
+- [Namespaces in operation, part 7: Network namespaces](https://lwn.net/Articles/580893/)
+- [ip-netns](https://man7.org/linux/man-pages/man8/ip-netns.8.html)
