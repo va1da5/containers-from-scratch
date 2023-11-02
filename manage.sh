@@ -10,7 +10,7 @@ export CGROUP=container
 # install host dependencies
 function get_dependencies(){
     apt update
-    apt install -y curl jq archivemount cgroup-tools bridge-utils net-tools
+    apt install -y curl jq archivemount cgroup-tools bridge-utils net-tools golang
 }
 
 # download container file system from Dockerhub
@@ -177,13 +177,18 @@ function attach(){
 
 # provisioning workflow
 function up(){
-    get_dependencies
+    # get_dependencies
     get_fs
     mount_fs
     mount_sys_fs
     cgroup
     network
     start_container
+}
+
+function get_rootfs(){
+    get_fs
+    mount_fs
 }
 
 function down(){

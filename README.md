@@ -403,6 +403,30 @@ iptables -t nat -A POSTROUTING -o eth0 -s 172.31.0.0/24 -j MASQUERADE
 iptables -t nat -L
 ```
 
+## Minimal Golang Implementation
+
+```bash
+# start bash process in new namespace context
+unshare --mount --uts --ipc --fork --time --user --map-root-user /usr/bin/bash
+
+# create minimal container using
+go run main.go run alpine:3.18 /bin/sh
+
+# cgroups and network namespaces require elevated privileges
+# however, it is possible to limit resources and still create rootless containers with the following hack
+
+# create control group for a container
+sudo ./manage.sh cgroup
+
+# create a network configuration for a container
+sudo ./manage.sh network
+
+sudo cgexec -g cpu,memory,pids,cpuset:container \
+    ip netns exec container \
+    su -l $USER -c "go run main.go run alpine:3.18 /bin/sh"
+
+```
+
 ## References
 
 - [Cgroups, namespaces, and beyond: what are containers made from?](https://www.youtube.com/watch?v=sK5i-N34im8&ab_channel=Docker)
@@ -413,6 +437,7 @@ iptables -t nat -L
 - [Containers from Scratch](https://ericchiang.github.io/post/containers-from-scratch/)
 - [Downloading Docker Images from Docker Hub without using Docker](https://devops.stackexchange.com/questions/2731/downloading-docker-images-from-docker-hub-without-using-docker)
 - [Rootless Containers from Scratch - Liz Rice, Aqua Security](https://www.youtube.com/watch?v=jeTKgAEyhsA&ab_channel=TheLinuxFoundation)
+- [Containers from scratch: The sequel - Liz Rice (Aqua Security)](https://www.youtube.com/watch?v=_TsSmSu57Zo&ab_channel=ContainerCamp)
 - [cgroup memory](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/6/html/resource_management_guide/sec-memory#memory_example-usage)
 - [Using cgroups-v2 to control distribution of CPU time for applications](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/managing_monitoring_and_updating_the_kernel/using-cgroups-v2-to-control-distribution-of-cpu-time-for-applications_managing-monitoring-and-updating-the-kernel)
 - [Using cgroups to defeat fork bombs](https://securitylabs.datadoghq.com/articles/container-security-fundamentals-part-4/#using-cgroups-to-defeat-fork-bombs)
@@ -425,3 +450,4 @@ iptables -t nat -L
 - [How Docker Works - Intro to Namespaces](https://www.youtube.com/watch?v=-YnMr1lj4Z8&ab_channel=LiveOverflow)
 - [Namespaces in operation, part 7: Network namespaces](https://lwn.net/Articles/580893/)
 - [ip-netns](https://man7.org/linux/man-pages/man8/ip-netns.8.html)
+- [Golang Syscall](https://pkg.go.dev/syscall)
